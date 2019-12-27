@@ -83,6 +83,34 @@
                     </div>
                 </div>
             </TabPane>
+            <TabPane label="查询" name="name6">
+                <div style="text-align:left">
+                    <div>
+                        <Button
+                            type="success"
+                            @click="doSearchDataFromIndexWithLeftLike"
+                            >模糊查询左like</Button
+                        >
+                    </div>
+                    <div>
+                        <Button
+                            type="success"
+                            @click="doSearchDataFromIndexWithLike"
+                            >模糊查询包含</Button
+                        >
+                    </div>
+                    <div>
+                        <Button
+                            type="success"
+                            @click="doSearchDataFromIndexWithCompoundQuery"
+                            >复合查询</Button
+                        >
+                    </div>
+                    <div>
+                        <span>运行结果：{{ msg }}</span>
+                    </div>
+                </div>
+            </TabPane>
         </Tabs>
     </div>
 </template>
@@ -92,10 +120,10 @@ let db;
 export default {
     data() {
         return {
-            msg: '',
+            msg: "",
             dbInfo: {
-                name: '',
-                version: ''
+                name: "",
+                version: ""
             }
         };
     },
@@ -104,7 +132,7 @@ export default {
         check() {
             return new Promise((resolve, reject) => {
                 if (!window.indexedDB) {
-                    reject(new Error('该浏览器不支持indexedDB'));
+                    reject(new Error("该浏览器不支持indexedDB"));
                 } else {
                     resolve();
                 }
@@ -112,11 +140,11 @@ export default {
         },
         open() {
             return new Promise((resolve, reject) => {
-                let request = window.indexedDB.open('SchoolDatabase');
+                let request = window.indexedDB.open("SchoolDatabase");
                 request.onerror = e => {
                     reject(
                         new Error(
-                            '创建数据库连接失败: ' + e.target.error.message
+                            "创建数据库连接失败: " + e.target.error.message
                         )
                     );
                 };
@@ -125,24 +153,17 @@ export default {
                     // 获得IDBDatabase对象
                     let db = e.target.result;
                     resolve(db);
-                };
-                request.onblocked = e => {
-                    reject(
-                        new Error(
-                            '创建数据库连接失败: ' + e.target.error.message
-                        )
-                    );
                 };
             });
         },
         openAndCreateTable() {
             return new Promise((resolve, reject) => {
                 let request = window.indexedDB.open(
-                    'SchoolDatabase',
+                    "SchoolDatabase",
                     this.dbInfo.version + 1
                 );
                 request.onerror = e => {
-                    reject(new Error('创建表失败: ' + e.target.error.message));
+                    reject(new Error("创建表失败: " + e.target.error.message));
                 };
                 request.onsuccess = e => {
                     // 创建数据库连接成功
@@ -152,27 +173,28 @@ export default {
                 };
                 request.onupgradeneeded = e => {
                     let db = e.target.result;
-                    // 创建使用id作为主键的student表
-                    db.createObjectStore('student', { keyPath: 'id' });
-                };
-                request.onblocked = e => {
-                    reject(
-                        new Error(
-                            '创建数据库连接失败: ' + e.target.error.message
-                        )
-                    );
+                    if (!Array.from(db.objectStoreNames).includes("student")) {
+                        // 创建使用id作为主键的student表
+                        db.createObjectStore("student", { keyPath: "id" });
+                    }
+                    if (!Array.from(db.objectStoreNames).includes("teacher")) {
+                        // 创建自增主键的teacher表
+                        db.createObjectStore("teacher", {
+                            autoIncrement: true
+                        });
+                    }
                 };
             });
         },
         openAndAddIndex() {
             return new Promise((resolve, reject) => {
                 let request = window.indexedDB.open(
-                    'SchoolDatabase',
+                    "SchoolDatabase",
                     this.dbInfo.version + 1
                 );
                 request.onerror = e => {
                     reject(
-                        new Error('创建索引失败: ' + e.target.error.message)
+                        new Error("创建索引失败: " + e.target.error.message)
                     );
                 };
                 request.onsuccess = e => {
@@ -182,13 +204,28 @@ export default {
                     resolve(db);
                 };
                 request.onupgradeneeded = e => {
-                    let store = e.target.transaction.objectStore('student');
-                    store.createIndex('ageIndex', 'age', { unique: false });
-                };
-                request.onblocked = e => {
-                    reject(
-                        new Error('创建索引失败: ' + e.target.error.message)
-                    );
+                    let store1 = e.target.transaction.objectStore("student");
+                    let store2 = e.target.transaction.objectStore("teacher");
+                    if (!Array.from(store1.indexNames).includes("ageIndex")) {
+                        store1.createIndex("ageIndex", "age", {
+                            unique: false
+                        });
+                    }
+                    if (!Array.from(store1.indexNames).includes("classIndex")) {
+                        store1.createIndex("classIndex", "class", {
+                            unique: false
+                        });
+                    }
+                    if (!Array.from(store1.indexNames).includes("age|class")) {
+                        store1.createIndex("age|class", ["age", "class"], {
+                            unique: false
+                        });
+                    }
+                    if (!Array.from(store2.indexNames).includes("classIndex")) {
+                        store2.createIndex("classIndex", "class", {
+                            unique: true
+                        });
+                    }
                 };
             });
         },
@@ -214,7 +251,10 @@ export default {
             }
         },
         async createTable() {
-            if (!Array.from(db.objectStoreNames).includes('student')) {
+            if (
+                !Array.from(db.objectStoreNames).includes("student") ||
+                !Array.from(db.objectStoreNames).includes("teacher")
+            ) {
                 this.close();
                 db = await this.openAndCreateTable();
                 this.dbInfo = {
@@ -224,10 +264,18 @@ export default {
             }
         },
         async createIndex() {
-            let store = db
-                .transaction('student', 'readonly')
-                .objectStore('student');
-            if (!Array.from(store.indexNames).includes('ageIndex')) {
+            let store1 = db
+                .transaction("student", "readonly")
+                .objectStore("student");
+            let store2 = db
+                .transaction("teacher", "readonly")
+                .objectStore("teacher");
+            if (
+                !Array.from(store1.indexNames).includes("ageIndex") ||
+                !Array.from(store1.indexNames).includes("classIndex") ||
+                !Array.from(store1.indexNames).includes("age|class") ||
+                !Array.from(store2.indexNames).includes("classIndex")
+            ) {
                 this.close();
                 db = await this.openAndAddIndex();
                 this.dbInfo = {
@@ -237,42 +285,54 @@ export default {
             }
         },
         async addData(data) {
-            let addPromise = (objectStore, student) => {
+            let addPromise = (objectStore, obj) => {
                 return new Promise((resolve, reject) => {
-                    let request = objectStore.add(student);
+                    let request = objectStore.add(obj);
                     request.onsuccess = () => {
                         resolve();
                     };
                     request.onerror = e => {
                         reject(
-                            new Error('添加数据失败: ' + e.target.error.message)
+                            new Error("添加数据失败: " + e.target.error.message)
                         );
                     };
                 });
             };
-            let students = Array.isArray(data) ? data : [data];
-            let transaction = db.transaction('student', 'readwrite');
+            let objs = Array.isArray(data) ? data : [data];
+            let transaction1 = db.transaction("student", "readwrite");
+            let transaction2 = db.transaction("teacher", "readwrite");
             return new Promise((resolve, reject) => {
-                let objectStore = transaction.objectStore('student');
+                let objectStore1 = transaction1.objectStore("student");
+                let objectStore2 = transaction2.objectStore("teacher");
                 Promise.all(
-                    students.map(student => addPromise(objectStore, student))
+                    objs
+                        .filter(obj =>
+                            ["teacher", "student"].includes(obj.role)
+                        )
+                        .map(obj =>
+                            addPromise(
+                                obj.role === "student"
+                                    ? objectStore1
+                                    : objectStore2,
+                                obj
+                            )
+                        )
                 )
                     .then(() => {
                         resolve();
                     })
                     .catch(e => {
-                        transaction.abort(e.message);
-                        reject(
-                            new Error(e.message)
-                        );
+                        transaction1.abort(e.message);
+                        transaction2.abort(e.message);
+                        reject(new Error(e.message));
                     });
             });
         },
-        async searchDataFromIndex() {
+        async searchStudentFromIndex() {
             return new Promise((resolve, reject) => {
-                let transaction = db.transaction('student', 'readonly');
-                let objectStore = transaction.objectStore('student');
-                let dbIndex = objectStore.index('ageIndex');
+                let transaction = db.transaction("student", "readonly");
+                let objectStore = transaction.objectStore("student");
+                let dbIndex = objectStore.index("ageIndex");
                 let request = dbIndex.openCursor(IDBKeyRange.bound(0, 30));
                 let result = [];
                 request.onsuccess = e => {
@@ -286,7 +346,105 @@ export default {
                 };
                 request.onerror = e => {
                     reject(
-                        new Error('添加数据失败: ' + e.target.error.message)
+                        new Error("搜索数据失败: " + e.target.error.message)
+                    );
+                };
+            });
+        },
+        async searchTeacherFromIndex() {
+            return new Promise((resolve, reject) => {
+                let transaction = db.transaction("teacher", "readonly");
+                let objectStore = transaction.objectStore("teacher");
+                let dbIndex = objectStore.index("classIndex");
+                let request = dbIndex.openCursor(IDBKeyRange.only("1-2"));
+                let result = [];
+                request.onsuccess = e => {
+                    let cursor = e.target.result;
+                    if (cursor) {
+                        result.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve(result);
+                    }
+                };
+                request.onerror = e => {
+                    reject(
+                        new Error("搜索数据失败: " + e.target.error.message)
+                    );
+                };
+            });
+        },
+        async searchStudentFromIndexWithLeftLike() {
+            return new Promise((resolve, reject) => {
+                let transaction = db.transaction("student", "readonly");
+                let objectStore = transaction.objectStore("student");
+                let dbIndex = objectStore.index("classIndex");
+                let request = dbIndex.openCursor(
+                    IDBKeyRange.bound("1-", "1-" + "\uffff")
+                );
+                let result = [];
+                request.onsuccess = e => {
+                    let cursor = e.target.result;
+                    if (cursor) {
+                        result.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve(result);
+                    }
+                };
+                request.onerror = e => {
+                    reject(
+                        new Error("搜索数据失败: " + e.target.error.message)
+                    );
+                };
+            });
+        },
+        async searchStudentFromIndexWithLike() {
+            return new Promise((resolve, reject) => {
+                let transaction = db.transaction("student", "readonly");
+                let objectStore = transaction.objectStore("student");
+                let dbIndex = objectStore.index("classIndex");
+                let request = dbIndex.openCursor();
+                let result = [];
+                request.onsuccess = e => {
+                    let cursor = e.target.result;
+                    if (cursor) {
+                        if ((cursor.value.class || "").includes("2")) {
+                            result.push(cursor.value);
+                        }
+                        cursor.continue();
+                    } else {
+                        resolve(result);
+                    }
+                };
+                request.onerror = e => {
+                    reject(
+                        new Error("搜索数据失败: " + e.target.error.message)
+                    );
+                };
+            });
+        },
+        async searchStudentFromIndexWithCompoundQuery() {
+            return new Promise((resolve, reject) => {
+                let transaction = db.transaction("student", "readonly");
+                let objectStore = transaction.objectStore("student");
+                let dbIndex = objectStore.index("age|class");
+                let request = dbIndex.openCursor(
+                    IDBKeyRange.bound([0, "1-1"], [20, "1-1"])
+                );
+                let result = [];
+                request.onsuccess = e => {
+                    let cursor = e.target.result;
+                    if (cursor) {
+                        result.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve(result);
+                    }
+                };
+                request.onerror = e => {
+                    reject(
+                        new Error("搜索数据失败: " + e.target.error.message)
                     );
                 };
             });
@@ -294,7 +452,7 @@ export default {
         async doSetup() {
             try {
                 this.setup();
-                this.msg = '创建数据库连接成功';
+                this.msg = "创建数据库连接成功";
             } catch (error) {
                 this.msg = error.message;
             }
@@ -302,9 +460,9 @@ export default {
         async doCreateTable() {
             try {
                 await this.setup();
-                this.msg = '数据库连接成功, 正在初始化表';
+                this.msg = "数据库连接成功, 正在初始化表";
                 await this.createTable();
-                this.msg = '初始化表成功';
+                this.msg = "初始化表成功";
             } catch (error) {
                 this.msg = error.message;
             }
@@ -312,44 +470,80 @@ export default {
         async doAddData() {
             try {
                 await this.setup();
-                this.msg = '数据库连接成功, 正在初始化表';
+                this.msg = "数据库连接成功, 正在初始化表";
                 await this.createTable();
-                this.msg = '初始化表成功, 正在添加数据';
-                await this.addData({
-                    id: '0001',
-                    name: 'Victor',
-                    age: 29
-                });
-                this.msg = '添加数据成功';
+                this.msg = "初始化表成功, 正在添加数据";
+                await this.addData([
+                    {
+                        id: "0001",
+                        name: "Victor",
+                        age: 29,
+                        role: "student",
+                        class: "1-1"
+                    },
+                    {
+                        name: "Jack",
+                        age: 42,
+                        role: "teacher",
+                        class: "1-1"
+                    }
+                ]);
+                this.msg = "添加数据成功";
             } catch (error) {
                 this.msg = error.message;
             }
         },
         async doAddMultData() {
-            let students = [
+            let objs = [
                 {
-                    id: '0002',
-                    name: 'Lucy',
-                    age: 15
+                    id: "0002",
+                    name: "Lucy",
+                    age: 15,
+                    role: "student",
+                    class: "1-1"
                 },
                 {
-                    id: '0003',
-                    name: 'Mike',
-                    age: 35
+                    id: "0003",
+                    name: "Mike",
+                    age: 35,
+                    role: "student",
+                    class: "1-2"
                 },
                 {
-                    id: '0004',
-                    name: 'David',
-                    age: 28
+                    id: "0004",
+                    name: "David",
+                    age: 28,
+                    role: "student",
+                    class: "1-2"
+                },
+                {
+                    id: "0005",
+                    name: "Jim",
+                    age: 28,
+                    role: "student",
+                    class: "2-1"
+                },
+                {
+                    id: "0006",
+                    name: "Tom",
+                    age: 28,
+                    role: "student",
+                    class: "2-2"
+                },
+                {
+                    name: "John",
+                    age: 40,
+                    role: "teacher",
+                    class: "1-2"
                 }
             ];
             try {
                 await this.setup();
-                this.msg = '数据库连接成功, 正在初始化表';
+                this.msg = "数据库连接成功, 正在初始化表";
                 await this.createTable();
-                this.msg = '初始化表成功, 正在添加数据';
-                await this.addData(students);
-                this.msg = '添加数据成功';
+                this.msg = "初始化表成功, 正在添加数据";
+                await this.addData(objs);
+                this.msg = "添加数据成功";
             } catch (error) {
                 this.msg = error.message;
             }
@@ -357,11 +551,11 @@ export default {
         async doAddIndex() {
             try {
                 await this.setup();
-                this.msg = '数据库连接成功, 正在初始化表';
+                this.msg = "数据库连接成功, 正在初始化表";
                 await this.createTable();
-                this.msg = '初始化表成功, 正在添加索引';
+                this.msg = "初始化表成功, 正在添加索引";
                 await this.createIndex();
-                this.msg = '添加索引成功';
+                this.msg = "添加索引成功";
             } catch (error) {
                 this.msg = error.message;
             }
@@ -369,44 +563,101 @@ export default {
         async doSearchDataFromIndex() {
             try {
                 await this.setup();
-                this.msg = '数据库连接成功, 正在初始化表';
+                this.msg = "数据库连接成功, 正在初始化表";
                 await this.createTable();
-                this.msg = '初始化表成功, 正在添加索引';
+                this.msg = "初始化表成功, 正在添加索引";
                 await this.createIndex();
-                this.msg = '添加索引成功，正在查询数据';
-                let students = await this.searchDataFromIndex();
+                this.msg = "添加索引成功，正在查询数据";
+                let students = await this.searchStudentFromIndex();
                 this.msg =
-                    '查询数据成功，年龄在0-30之间的学生为: ' +
-                    students.map(student => student.name).join('|');
+                    "查询数据成功，年龄在0-30之间的学生为: " +
+                    students.map(student => student.name).join("|");
+                let teachers = await this.searchTeacherFromIndex();
+                this.msg +=
+                    "查询数据成功，班级在1-2的老师为: " +
+                    teachers.map(teacher => teacher.name).join("|");
+            } catch (error) {
+                this.msg = error.message;
+            }
+        },
+        async doSearchDataFromIndexWithLeftLike() {
+            try {
+                await this.setup();
+                this.msg = "数据库连接成功, 正在初始化表";
+                await this.createTable();
+                this.msg = "初始化表成功, 正在添加索引";
+                await this.createIndex();
+                this.msg = "添加索引成功，正在查询数据";
+                let students = await this.searchStudentFromIndexWithLeftLike();
+                this.msg +=
+                    "查询数据成功，班级在1-?的学生为: " +
+                    students.map(student => student.name).join("|");
+            } catch (error) {
+                this.msg = error.message;
+            }
+        },
+        async doSearchDataFromIndexWithLike() {
+            try {
+                await this.setup();
+                this.msg = "数据库连接成功, 正在初始化表";
+                await this.createTable();
+                this.msg = "初始化表成功, 正在添加索引";
+                await this.createIndex();
+                this.msg = "添加索引成功，正在查询数据";
+                let students = await this.searchStudentFromIndexWithLike();
+                this.msg +=
+                    "查询数据成功，班级中有2的学生为: " +
+                    students.map(student => student.name).join("|");
+            } catch (error) {
+                this.msg = error.message;
+            }
+        },
+        async doSearchDataFromIndexWithCompoundQuery() {
+            try {
+                await this.setup();
+                this.msg = "数据库连接成功, 正在初始化表";
+                await this.createTable();
+                this.msg = "初始化表成功, 正在添加索引";
+                await this.createIndex();
+                this.msg = "添加索引成功，正在查询数据";
+                let students = await this.searchStudentFromIndexWithCompoundQuery();
+                this.msg +=
+                    "查询数据成功，在1-1班里年龄在0-20之间的学生为: " +
+                    students.map(student => student.name).join("|");
             } catch (error) {
                 this.msg = error.message;
             }
         },
         async doTransaction() {
-            let students = [
+            let objs = [
                 {
-                    id: '0005',
-                    name: 'Jay',
-                    age: 32
+                    id: "0007",
+                    name: "Jay",
+                    age: 32,
+                    role: "student",
+                    class: "1-2"
                 },
                 {
-                    id: '0006',
-                    name: 'Mar',
-                    age: 35
+                    name: "Mar",
+                    age: 39,
+                    role: "teacher",
+                    class: "1-1"
                 },
                 {
-                    id: '0004',
-                    name: 'David',
-                    age: 28
+                    id: "0004",
+                    name: "David",
+                    age: 28,
+                    class: "1-2",
+                    role: "student"
                 }
             ];
             try {
                 await this.setup();
-                this.msg = '数据库连接成功, 正在初始化表';
+                this.msg = "数据库连接成功, 正在初始化表";
                 await this.createTable();
-                this.msg = '初始化表成功, 正在添加数据';
-                await this.addData(students);
-                this.msg = '添加数据成功';
+                this.msg = "初始化表成功, 正在添加数据";
+                await this.addData(objs);
+                this.msg = "添加数据成功";
             } catch (error) {
                 this.msg = error.message;
             }
